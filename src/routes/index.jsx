@@ -1,19 +1,32 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import HomePage from "../pages/HomePage";
 import BoardPage from "../pages/BoardPage";
-import HomePage from "../pages/HomePage"; // Trang chọn board
+import LoginPage from "../pages/LoginPage";
+import RegisterPage from "../pages/RegisterPage";
 import NotFound from "../components/NotFound";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <HomePage />, // Tạm thời
-    errorElement: <NotFound />,
+    element: (
+      <ProtectedRoute>
+        <HomePage />
+      </ProtectedRoute>
+    ),
   },
   {
-    path: "/board/:boardId",
-    element: <BoardPage />,
+    path: "/boards/:id",
+    element: (
+      <ProtectedRoute>
+        <BoardPage />
+      </ProtectedRoute>
+    ),
   },
-  // Thêm các route khác như /login, /register sau
+  { path: "/login", element: <LoginPage /> },
+  { path: "/register", element: <RegisterPage /> },
+  { path: "*", element: <NotFound /> },
 ]);
-
-export default router;
+export default function Routes() {
+  return <RouterProvider router={router} />;
+}

@@ -1,66 +1,90 @@
-import { useState } from "react";
-import { Box } from "@mui/material";
-import List from "../components/List/List"; // Import component Cột
+import { useEffect, useMemo, useState } from "react";
+import { Box, Container } from "@mui/material";
+import DndContext from "../../../contexts/DndContext";
+import useBoard from "../hooks/useBoard";
+import { DEFAULT_BOARD_ID } from "../../../config/constants";
+import Spinner from "../../../components/Spinner/Spinner";
+import BoardHeader from "../components/BoardHeader";
+import List from "../components/List/List";
+import CreateNewList from "../components/CreateNewList";
+import axiosClient from "../../../api/axiosClient";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import createDragEndHandler from "../hooks/useDragEnd";
 
-// --- GIẢ LẬP DỮ LIỆU TẠM THỜI ---
-// Sau này dữ liệu này sẽ lấy từ React Query
-const MOCK_BOARD = {
-  id: "board-1",
-  title: "Dự án KanbanFlow",
-  lists: [
-    { id: "list-1", title: "Todo", cardOrder: ["card-1", "card-2"] },
-    { id: "list-2", title: "Doing", cardOrder: ["card-3"] },
-    { id: "list-3", title: "Done", cardOrder: [] },
-  ],
-  cards: [
-    {
-      id: "card-1",
-      listId: "list-1",
-      title: "Thiết kế UI/UX",
-    },
-    {
-      id: "card-2",
-      listId: "list-1",
-      title: "Code layout cho Board",
-    },
-    {
-      id: "card-3",
-      listId: "list-2",
-      title: "Gọi API Board",
-    },
-  ],
-};
-// ------------------------------------
+export default function BoardContainer() {
+  const { data, isLoading } = useBoard(DEFAULT_BOARD_ID);
+  const [board, setBoard] = useState(null);
 
-/**
- * Component "thông minh" quản lý toàn bộ logic của Board.
- * Nơi chứa DndContext, gọi API (React Query), xử lý logic kéo thả.
- */
-function BoardContainer() {
-  // Tạm thời dùng useState, sau này sẽ là data từ React Query
-  const [board, setBoard] = useState(MOCK_BOARD);
+  useEffect(() => {
+    if (data) {
+      Promise.all(
+        (data.lists || []).map(async (l) => {
+          const cards = (
+            await axiosClient.get(
+              `/cards?listId=${l.id}&_sort=position&_order=asc`
+            )
+          ).data;
+          return { ...l, cards };
+        })
+      ).then((lists) => setBoard({ ...data, lists }));
+    }
+  }, [data]);
 
-  // Hàm này để lọc ra các card thuộc về một list
-  const getCardsForList = (listId) => {
-    return board.cards.filter((card) => card.listId === listId);
+  const handleAddList = async (title) => {
+    const res = (
+      await axiosClient.post("/lists", {
+        boardId: data.id,
+        title,
+        position: board.lists.length,
+      })
+    ).data;
+    setBoard({ ...board, lists: [...board.lists, { ...res, cards: [] }] });
+  };
+  const handleAddCard = async (listId, title) => {
+    const list = board.lists.find((l) => l.id === listId);
+    const res = (
+      await axiosClient.post("/cards", {
+        listId,
+        title,
+        position: list.cards.length,
+      })
+    ).data;
+    const newLists = board.lists.map((l) =>
+      l.id === listId ? { ...l, cards: [...l.cards, res] } : l
+    );
+    setBoard({ ...board, lists: newLists });
   };
 
+  const onDragEnd = useMemo(
+    () => (board ? createDragEndHandler(board, setBoard) : () => {}),
+    [board]
+  );
+
+  if (isLoading || !board) return <Spinner />;
   return (
-    <Box
-      sx={{
-        display: "flex",
-        overflowX: "auto", // Cho phép cuộn ngang
-        flexGrow: 1,
-        p: 2, // padding
-      }}
-    >
-      {/* Sau này <DndContext> của dnd-kit sẽ bọc ở đây
-       */}
-      {board.lists.map((list) => (
-        <List key={list.id} list={list} cards={getCardsForList(list.id)} />
-      ))}
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <BoardHeader title={board.title} />
+      <Container maxWidth={false} sx={{ overflowX: "auto", py: 2 }}>
+        <DndContext onDragEnd={onDragEnd}>
+          {/* Bọc các list bằng SortableContext để sắp xếp ngang */}
+          <SortableContext
+            items={board.lists.map((l) => `list:${l.id}`)}
+            strategy={horizontalListSortingStrategy}
+          >
+            <Box sx={{ display: "flex", gap: 2 }}>
+              {board.lists
+                .sort((a, b) => a.position - b.position)
+                .map((l) => (
+                  <List key={l.id} list={l} onAddCard={handleAddCard} />
+                ))}
+              <CreateNewList onCreate={handleAddList} />
+            </Box>
+          </SortableContext>
+        </DndContext>
+      </Container>
     </Box>
   );
 }
-
-export default BoardContainer;

@@ -1,75 +1,149 @@
 import PropTypes from "prop-types";
-import { Box, Typography, Paper } from "@mui/material";
+import {
+  Box,
+  Card as MUICard,
+  CardHeader,
+  IconButton,
+  Stack,
+  TextField,
+} from "@mui/material";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import DeleteOutline from "@mui/icons-material/DeleteOutline";
 import Card from "../Card/Card";
+import { useState } from "react";
+import { useDndMonitor } from "@dnd-kit/core";
 
-/**
- * Component hiển thị một Cột (List)
- */
-function List({ list, cards }) {
+export default function List({ list, onAddCard }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `list:${list.id}` });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    cursor: isDragging ? "grabbing" : "grab",
+  };
+  const [title, setTitle] = useState("");
+
+  // --- State hiển thị vạch preview ---
+  const [overId, setOverId] = useState(null);
+  const [activeId, setActiveId] = useState(null);
+
+  useDndMonitor({
+    onDragStart: ({ active }) => {
+      setActiveId(active?.id || null);
+    },
+    onDragOver: ({ over }) => {
+      setOverId(over?.id || null);
+    },
+    onDragEnd: () => {
+      setOverId(null);
+      setActiveId(null);
+    },
+    onDragCancel: () => {
+      setOverId(null);
+      setActiveId(null);
+    },
+  });
+
+  // Tính index vạch preview trong list hiện tại
+  const cardIds = list.cards.map((c) => `card:${c.id}`);
+  const isDraggingCardHere =
+    activeId?.toString().startsWith("card:") &&
+    overId &&
+    (cardIds.includes(overId) || overId === `list:${list.id}`);
+
+  const previewIndex = isDraggingCardHere
+    ? overId === `list:${list.id}`
+      ? list.cards.length // nếu đang hover vùng trống cuối list
+      : Math.max(0, cardIds.indexOf(overId))
+    : -1;
+
   return (
-    <Paper
-      sx={{
-        minWidth: 300,
-        maxWidth: 300,
-        mx: 1, // margin ngang
-        height: "fit-content",
-        backgroundColor: "#ebecf0", // Màu cột Trello
-      }}
+    <div
+      ref={setNodeRef}
+      style={{ ...style, width: 300, flex: "0 0 300px" }}
+      {...attributes}
+      {...listeners}
     >
-      {/* Tiêu đề Cột */}
-      <Typography
-        sx={{
-          p: 2,
-          fontWeight: "bold",
-        }}
-      >
-        {list.title}
-      </Typography>
+      <MUICard sx={{ mr: 2, bgcolor: "#fdfdfd" }}>
+        <CardHeader
+          title={list.title}
+          action={
+            <IconButton size="small">
+              <DeleteOutline fontSize="small" />
+            </IconButton>
+          }
+        />
+        <Box sx={{ px: 2, pb: 2 }}>
+          {/* Sortable theo trục dọc cho CARD */}
+          <SortableContext
+            items={cardIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <Stack spacing={1}>
+              {list.cards.map((c, idx) => (
+                <div key={c.id}>
+                  {/* Vạch preview trước vị trí card */}
+                  {previewIndex === idx && (
+                    <div
+                      style={{
+                        height: 8,
+                        borderRadius: 4,
+                        background: "rgba(25,118,210,0.35)",
+                        margin: "4px 0",
+                      }}
+                    />
+                  )}
+                  <Card card={c} />
+                </div>
+              ))}
+              {/* Nếu preview ở cuối danh sách */}
+              {previewIndex === list.cards.length && (
+                <div
+                  style={{
+                    height: 8,
+                    borderRadius: 4,
+                    background: "rgba(25,118,210,0.35)",
+                    margin: "4px 0",
+                  }}
+                />
+              )}
+            </Stack>
+          </SortableContext>
 
-      {/* Danh sách các Thẻ */}
-      <Box
-        sx={{
-          p: 1,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1, // khoảng cách giữa các thẻ
-          maxHeight: "calc(100vh - 200px)", // Giới hạn chiều cao
-          overflowY: "auto", // Cho phép cuộn dọc nếu nhiều thẻ
-        }}
-      >
-        {/* Sau này <SortableContext> của dnd-kit sẽ bọc ở đây
-         */}
-        {cards.map((card) => (
-          <Card key={card.id} card={card} />
-        ))}
-        {/* Kết thúc SortableContext */}
-      </Box>
-
-      {/* Footer Cột (Nút "Thêm thẻ") */}
-      <Box sx={{ p: 1 }}>
-        <Typography
-          sx={{ cursor: "pointer", "&:hover": { color: "primary.main" } }}
-        >
-          + Thêm thẻ
-        </Typography>
-      </Box>
-    </Paper>
+          {/* Thêm nhanh card */}
+          <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
+            <TextField
+              size="small"
+              placeholder="Thêm thẻ..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              sx={{ flex: 1 }}
+            />
+            <IconButton
+              onClick={() => {
+                if (!title.trim()) return;
+                onAddCard(list.id, title);
+                setTitle("");
+              }}
+              color="primary"
+            >
+              +
+            </IconButton>
+          </Box>
+        </Box>
+      </MUICard>
+    </div>
   );
 }
-
-// --- Định nghĩa PropTypes ---
-List.propTypes = {
-  list: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    title: PropTypes.string.isRequired,
-  }).isRequired,
-  cards: PropTypes.arrayOf(
-    PropTypes.shape({
-      id: PropTypes.string.isRequired,
-      listId: PropTypes.string.isRequired,
-      title: PropTypes.string.isRequired,
-    })
-  ).isRequired,
-};
-
-export default List;
+List.propTypes = { list: PropTypes.object, onAddCard: PropTypes.func };
